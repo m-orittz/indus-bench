@@ -10,17 +10,18 @@ env = gym.make(
     num_envs=1,
     obs_mode="rgb", # there is also "state_dict", "rgbd", "state"...
     control_mode="pd_ee_delta_pose", # there is also "pd_joint_delta_pos", ...
-    #render_mode="human"
+    render_mode="rgb_array",
     sim_backend="gpu",
-    render_backend="gpu",
-    viewer_camera_configs=dict(shader_pack="rt-fast")
-)
+    render_backend="gpu"
+    )
 #test recording?
 env = RecordEpisode(
         env,
-        output_dir=f"~/Videos/sim-output",
+        output_dir=f"/home/moritzwagner//Videos/sim-output",
+        save_trajectory=False,
         trajectory_name=f"hello-test-1",
-        info_on_video=True,
+        save_video=True,
+        video_fps=30
     )
 
 print("Observation space", env.observation_space)
@@ -34,5 +35,13 @@ while not done:
     done = terminated or truncated
     #env.render()  # a display is required to render
     print(f"Obs shape: {obs.shape}, Reward shape {reward.shape}, Done shape {done.shape}")
-
 env.close()
+
+# env.reset()
+# for n in range(200):
+#     obs, reward, terminated, truncated, info = env.step(env.action_space.sample())
+#     print(f"Step: {n}")
+#     if terminated or truncated:
+#         print(f"DONE!")
+#         env.reset()
+# env.close()
