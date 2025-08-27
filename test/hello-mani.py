@@ -1,9 +1,12 @@
 # https://maniskill.readthedocs.io/en/latest/user_guide/getting_started/quickstart.html
 
-
+import os, time, glob
 import gymnasium as gym
 import mani_skill.envs
-from mani_skill.utils.wrappers import RecordEpisode
+from mani_skill.utils.wrappers.record import RecordEpisode
+
+OUTPUT_DIR = os.path.expanduser("~/Videos/sim-output")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 env = gym.make(
     "PickCube-v1", # there are more tasks e.g. "PushCube-v1", "PegInsertionSide-v1", ...
@@ -17,7 +20,7 @@ env = gym.make(
 #test recording?
 env = RecordEpisode(
         env,
-        output_dir=f"/home/moritzwagner//Videos/sim-output",
+        output_dir=OUTPUT_DIR,
         save_trajectory=False,
         trajectory_name=f"hello-test-1",
         save_video=True,
@@ -34,8 +37,22 @@ while not done:
     obs, reward, terminated, truncated, info = env.step(action)
     done = terminated or truncated
     #env.render()  # a display is required to render
-    print(f"Obs shape: {obs.shape}, Reward shape {reward.shape}, Done shape {done.shape}")
-env.close()
+    print(f"Done? {done}, Terminated? {terminated}")
+
+# Trigger saving (same as CLI)
+env.reset()
+
+# None of the options below work, maybe check discord?
+# Now, explicitly tell the RecordEpisode wrapper to finish ffmpeg
+print("Recording complete, finalizing video to disk…")
+if hasattr(env, "flush"):
+    env.flush()   # <- this waits for video writer to close
+
+# Let I/O flush, mimic CLI pause
+# print("Recording complete, finalizing video to disk…")
+# time.sleep(5)
+
+# env.close()
 
 # env.reset()
 # for n in range(200):
