@@ -1,0 +1,2 @@
+maniskill real2sim uses octo branch:
+git checkout 653c54acde686fde619855f2eac0dd6edad7116b

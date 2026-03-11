@@ -1,0 +1,41 @@
+# Core frameworks
+# This file didn't work
+# torch==2.6.0+cu124
+# torchvision==0.21.0+cu124
+jax==0.4.30
+jaxlib==0.4.30+cuda12.cudnn89
+tensorflow==2.15.0
+
+# HuggingFace / Diffusion stack
+accelerate==1.9.0
+diffusers==0.34.0
+datasets==3.6.0
+transformers==4.44.2
+pyarrow==15.0.2
+
+# RL / Robot stack
+lerobot==0.3.4
+mani-skill==3.0.0b21
+gym-pusht==0.1.5
+pygame==2.5.2
+tf-agents==0.19.0
+optax==0.2.5
+chex==0.1.90
+
+# Utils
+numpy==1.24.4
+typing_extensions==4.12.2
+wandb==0.20.0
+dill==0.3.8
+opencv-python-headless==4.12.0.88
+
+# Pydantic + dependencies
+pydantic==2.8.2
+pydantic_core==2.33.2
+typeguard==4.4.4
+typing-inspection==0.4.1
+
+# PyTorch ecosystem utils
+arm-pytorch-utilities==0.4.3
+pytorch-kinematics==0.7.5
+pytorch-seed==0.2.0
