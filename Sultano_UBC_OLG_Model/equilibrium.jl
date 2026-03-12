@@ -19,6 +19,7 @@ import ..Parameters
 import ..Prices
 import ..Production
 import ..Household
+import ..Progress
 
 """
     GESolverOptions
@@ -139,8 +140,11 @@ function solve_Ae_fixedpoint_given_prices(p::Parameters.ModelParameters,
     b_implied  = NaN
     it_used    = 0
 
+    pb_ae = (opts.verbose && opts.verbose_Ae) ? Progress.ProgressBar("Ae fixed-point", opts.maxit_Ae; show_eta=true) : nothing
+
     for it in 1:opts.maxit_Ae
         it_used = it
+        (opts.verbose && opts.verbose_Ae) && Progress.update!(pb_ae, it)
 
         p_it = Parameters.with_Ae(p, Ae)
         p_it = Parameters.with_pension(p_it; τ_pension=p_it.τ_pension, b_pension=b)
@@ -188,6 +192,7 @@ function solve_Ae_fixedpoint_given_prices(p::Parameters.ModelParameters,
             Ae = Ae_implied
             b  = b_implied
             p_final = Parameters.with_pension(Parameters.with_Ae(p, Ae); τ_pension=p.τ_pension, b_pension=b)
+            (opts.verbose && opts.verbose_Ae) && Progress.finish!(pb_ae, "converged")
             info = (converged=true, it=it_used, Ae=Ae, Ae_implied=Ae_implied, relerr_Ae=err_Ae,
                     b_pension=b, b_implied=b_implied, relerr_b=err_b)
             return p_final, V, pol, DBN, agg, prod, info
@@ -205,6 +210,7 @@ function solve_Ae_fixedpoint_given_prices(p::Parameters.ModelParameters,
         b = max(0.0, b)
     end
 
+    (opts.verbose && opts.verbose_Ae) && Progress.finish!(pb_ae, "max iterations")
     p_final = Parameters.with_pension(Parameters.with_Ae(p, Ae); τ_pension=p.τ_pension, b_pension=b)
     err_Ae = abs(Ae_implied - Ae) / max(1.0, abs(Ae))
     err_b  = abs(b_implied  - b)  / max(1.0, abs(b))
@@ -296,7 +302,10 @@ function solve_w_Ae_given_r(p::Parameters.ModelParameters,
 
     opts.verbose && (println("w-FP r=$r: start w=$w"); flush(stdout))
 
+    pb_w = opts.verbose ? Progress.ProgressBar("w fixed-point (r=$r)", opts.maxit_w; show_eta=true) : nothing
+
     for it in 1:opts.maxit_w
+        opts.verbose && Progress.update!(pb_w, it)
         wImp, pX, VX, polX, DBNX, aggX, prodX, infoFP =
             implied_w_given_wguess(p_ws_local, g, r, w;
                 bip=bip, Ae0=Ae_ws, init_DBN=DBN_ws, opts=opts
@@ -312,6 +321,7 @@ function solve_w_Ae_given_r(p::Parameters.ModelParameters,
         end
 
         if abs(fM) < opts.tol_w
+            opts.verbose && Progress.finish!(pb_w, "converged")
             opts.verbose && (println("w-FP r=$r: converged it=$it w=$w |f|=$(abs(fM))"); flush(stdout))
             p_fp, prices_fp, V, pol, DBN, agg, prod, _ = best
             info = (converged=true, it=it, r=r, w=prices_fp.w, w_implied=wImp, f=fM, info_FP=infoFP)
@@ -331,6 +341,7 @@ function solve_w_Ae_given_r(p::Parameters.ModelParameters,
     end
 
     # Max iterations reached — return best point found (same safety behaviour as bisection).
+    opts.verbose && Progress.finish!(pb_w, "max iterations")
     p_fp, prices_fp, V, pol, DBN, agg, prod, infoFP = best
     info = (converged=false, it=opts.maxit_w, r=r, w=prices_fp.w,
             w_implied=best_wImp, f=best_f, info_FP=infoFP)
@@ -607,7 +618,10 @@ function solve_GE(p::Parameters.ModelParameters,
 
     opts.verbose && println("GE bracket: r_lo=$r_lo (f=$f_lo), r_hi=$r_hi (f=$f_hi)")
 
+    pb_r = opts.verbose ? Progress.ProgressBar("r-bisection (GE)", opts.maxit_r; show_eta=true) : nothing
+
     for it in 1:opts.maxit_r
+        opts.verbose && Progress.update!(pb_r, it)
         rM = (opts.log_bisect_r && r_lo > 0.0 && r_hi > 0.0) ? exp(0.5 * (log(r_lo) + log(r_hi))) : 0.5 * (r_lo + r_hi)
 
         tmp = safe_excessK(rM, p_ws, DBN_ws)
@@ -633,6 +647,7 @@ function solve_GE(p::Parameters.ModelParameters,
         end
 
         if (Krel < opts.tol_K) || (rrel < opts.tol_r)
+            opts.verbose && Progress.finish!(pb_r, "converged")
             p_fp, prices_fp, V, pol, DBN, agg, prod, info_w, f = best
             info = (converged=true, it=it, r=prices_fp.r, w=prices_fp.w,
                     excessK=f, K_supply=agg.K_supply, K_demand=agg.K_demand,
@@ -655,6 +670,7 @@ function solve_GE(p::Parameters.ModelParameters,
         DBN_ws = DBN_best
     end
 
+    opts.verbose && Progress.finish!(pb_r, "max iterations")
     p_fp, prices_fp, V, pol, DBN, agg, prod, info_w, f = best
     info = (converged=false, it=opts.maxit_r, r=prices_fp.r, w=prices_fp.w,
             excessK=f, K_supply=agg.K_supply, K_demand=agg.K_demand,

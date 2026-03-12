@@ -2,6 +2,8 @@ module Aggregates
 
 export compute_aggregates
 
+using Base.Threads
+
 import ..Prices
 import ..Parameters
 import ..Grids
@@ -63,7 +65,25 @@ function compute_aggregates(p::Parameters.ModelParameters,
     pension_tax_base_w  = 0.0
     pension_tax_base_pi = 0.0
 
-    @inbounds for h in 1:H
+    # === Thread-local accumulators for parallel reduction ===
+    nt = Threads.nthreads()
+    local_K_supply = zeros(Float64, nt)
+    local_K_demand = zeros(Float64, nt)
+    local_Debt = zeros(Float64, nt)
+    local_L = zeros(Float64, nt)
+    local_Ent_mass = zeros(Float64, nt)
+    local_Pop_mass = zeros(Float64, nt)
+    local_WorkPop_mass = zeros(Float64, nt)
+    local_RetPop_mass = zeros(Float64, nt)
+    local_Q_sum = zeros(Float64, nt)
+    local_rK_sum = zeros(Float64, nt)
+    local_Ent_cap_mass = zeros(Float64, nt)
+    local_pension_tax_base_w = zeros(Float64, nt)
+    local_pension_tax_base_pi = zeros(Float64, nt)
+
+    # Parallelize over age h (81 ages) for better thread utilization
+    @inbounds Threads.@threads for h in 1:H
+        tid = Threads.threadid()
         working = (h < p.RetAge)
 
         for ia in 1:na
@@ -73,50 +93,65 @@ function compute_aggregates(p::Parameters.ModelParameters,
                     mass = DBN[h, ia, iz, ep]
                     mass == 0.0 && continue
 
-                    Pop_mass += mass
-                    K_supply += a * mass
+                    local_Pop_mass[tid] += mass
+                    local_K_supply[tid] += a * mass
 
                     if working
-                        WorkPop_mass += mass
+                        local_WorkPop_mass[tid] += mass
 
                         if pol.e[h, ia, iz, ep] == 0
                             # === worker ===
-                            L += mass
-                            pension_tax_base_w += w * mass
+                            local_L[tid] += mass
+                            local_pension_tax_base_w[tid] += w * mass
 
                         else
                             # === entrepreneur (working-age only) ===
-                            Ent_mass += mass
+                            local_Ent_mass[tid] += mass
 
                             k = pol.k[h, ia, iz, ep]
-                            K_demand += k * mass
-                            Debt     += max(k - a, 0.0) * mass
+                            local_K_demand[tid] += k * mass
+                            local_Debt[tid]     += max(k - a, 0.0) * mass
 
                             if k > 0.0
                                 z = g.zgrid[iz]
 
                                 # === Q aggregation term ===
-                                Q_sum += Production.entrepreneur_q_term(z, k, p) * mass
+                                local_Q_sum[tid] += Production.entrepreneur_q_term(z, k, p) * mass
 
                                 # === profit consistent with Household ===
                                 π = Production.entrepreneur_profit(z, k, p, prices)
-                                pension_tax_base_pi += max(π, 0.0) * mass
+                                local_pension_tax_base_pi[tid] += max(π, 0.0) * mass
 
                                 # === MPK diagnostic ===
                                 MPK_i = Production.entrepreneur_mpk(z, k, p)
                                 r_i   = MPK_i - δ
-                                rK_sum      += r_i * mass
-                                Ent_cap_mass += mass
+                                local_rK_sum[tid]      += r_i * mass
+                                local_Ent_cap_mass[tid] += mass
                             end
                         end
                     else
                         # === retired ===
-                        RetPop_mass += mass
+                        local_RetPop_mass[tid] += mass
                     end
                 end
             end
         end
     end
+
+    # === Reduce thread-local accumulators ===
+    K_supply = sum(local_K_supply)
+    K_demand = sum(local_K_demand)
+    Debt = sum(local_Debt)
+    L = sum(local_L)
+    Ent_mass = sum(local_Ent_mass)
+    Pop_mass = sum(local_Pop_mass)
+    WorkPop_mass = sum(local_WorkPop_mass)
+    RetPop_mass = sum(local_RetPop_mass)
+    Q_sum = sum(local_Q_sum)
+    rK_sum = sum(local_rK_sum)
+    Ent_cap_mass = sum(local_Ent_cap_mass)
+    pension_tax_base_w = sum(local_pension_tax_base_w)
+    pension_tax_base_pi = sum(local_pension_tax_base_pi)
 
     Pop_mass <= 0.0 && error("Population mass is non-positive; check DBN.")
 

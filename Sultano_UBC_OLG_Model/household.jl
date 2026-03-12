@@ -127,12 +127,13 @@ function solve_household(p::Parameters.ModelParameters,
     for ep in 1:2
         entry_cost = (ep == 1) ? p.F : 0.0
 
-        Threads.@threads for iz in 1:nz
+        # Parallelize over asset grid (na=100) instead of ability grid (nz=9) for better thread utilization
+        Threads.@threads for ia in 1:na
             @inbounds begin
-                z = g.zgrid[iz]
+                a = g.agrid[ia]
 
-                for ia in 1:na
-                    a = g.agrid[ia]
+                for iz in 1:nz
+                    z = g.zgrid[iz]
 
                     res_W = (1.0 + r) * a + income_H
 
@@ -199,12 +200,13 @@ function solve_household(p::Parameters.ModelParameters,
         for ep in 1:2
             entry_cost = (ep == 1) ? p.F : 0.0
 
-            Threads.@threads for iz in 1:nz
+            # Parallelize over asset grid (na=100) instead of ability grid (nz=9) for better thread utilization
+            Threads.@threads for ia in 1:na
                 @inbounds begin
-                    z = g.zgrid[iz]
+                    a = g.agrid[ia]
 
-                    for ia in 1:na
-                        a = g.agrid[ia]
+                    for iz in 1:nz
+                        z = g.zgrid[iz]
 
                         res_W = (1.0 + r) * a + income_h
 

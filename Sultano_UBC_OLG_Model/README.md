@@ -475,6 +475,170 @@ Key runtime-reducing decisions made during development:
 
 ---
 
+---
+
+## Adding Progress Bars Only (Without Performance Improvements)
+
+If you only want to add the progress bar functionality without the parallelization improvements, follow these steps:
+
+### Files to Keep As-Is (Progress Bars Only)
+
+These files contain only progress bar changes and can be kept entirely:
+
+1. **`progress.jl`** — New file, keep entirely
+2. **`main.jl`** — Only change: added `include("progress.jl")` line (around line 22)
+
+### Files with Mixed Changes (Keep Progress Bars, Revert Parallelization)
+
+These files have both progress bars and parallelization. You need to keep the progress bar parts but revert the parallelization changes:
+
+#### `calibration.jl`
+
+**Keep:**
+- Import: `import ..Progress` (around line 16)
+- Progress bar creation: `pb_jac = opts.verbose ? Progress.ProgressBar(...)` (around line 278)
+- Progress bar updates: `opts.verbose && Progress.update!(pb_jac, j)` (around lines 287, 291)
+- Progress bar finish: `opts.verbose && Progress.finish!(pb_jac)` (around line 295)
+- Progress bar creation: `pb_cal = opts.verbose ? Progress.ProgressBar(...)` (around line 302)
+- Progress bar updates: `opts.verbose && Progress.update!(pb_cal, it)` (around line 305)
+- Progress bar finish calls: `opts.verbose && Progress.finish!(pb_cal, ...)` (around lines 361, 367)
+
+**Revert:**
+- Remove: `using Base.Threads` (line 7)
+- In `_ent_wealth_share_pop` function (around line 388):
+  - Change back from parallelized version to sequential:
+  ```julia
+  # REVERT TO:
+  totW = 0.0
+  entW = 0.0
+  
+  @inbounds for h in 1:H
+      for ia in 1:na, iz in 1:nz, ep in 1:ne
+          m = DBN[h, ia, iz, ep]
+          m == 0.0 && continue
+          a = g.agrid[ia]
+          totW += a * m
+          if pol.e[h, ia, iz, ep] == 1
+              entW += a * m
+          end
+      end
+  end
+  
+  return totW > 0.0 ? entW / totW : NaN
+  ```
+
+#### `equilibrium.jl`
+
+**Keep:**
+- Import: `import ..Progress` (around line 22)
+- All progress bar creation, update, and finish calls for `pb_ae`, `pb_w`, and `pb_r`
+
+**Revert:**
+- No parallelization changes in this file (it only has progress bars)
+
+#### `distribution.jl`
+
+**Keep:**
+- Import: `import ..Progress` (around line 11)
+- Progress bar creation: `pb_dbn = Progress.ProgressBar(...)` (around line 98)
+- Progress bar updates: `Progress.update!(pb_dbn, iter)` (around line 101)
+- Progress bar finish calls: `Progress.finish!(pb_dbn, ...)` (around lines 164, 172)
+
+**Revert:**
+- Change parallelization back from `ia` to `iz`:
+  - Line ~109: Change `Threads.@threads for ia in 1:na` back to `Threads.@threads for iz in 1:nz`
+  - Swap the loop order: `for ia in 1:na` becomes inner loop, `for iz in 1:nz` becomes outer loop
+  - Original structure was:
+  ```julia
+  Threads.@threads for iz in 1:nz
+      @inbounds for h in 1:H
+          for ia in 1:na
+              for ep in 1:2
+                  # ... code ...
+              end
+          end
+      end
+  end
+  ```
+
+### Files to Revert Entirely (Parallelization Only)
+
+These files only have parallelization changes and should be reverted:
+
+#### `household.jl`
+
+**Revert:**
+- Remove: `using Base.Threads` (line 3)
+- Change parallelization back from `ia` to `iz`:
+  - Around line 131: Change `Threads.@threads for ia in 1:na` back to `Threads.@threads for iz in 1:nz`
+  - Around line 204: Same change
+  - Swap loop order: `for iz in 1:nz` becomes outer parallel loop, `for ia in 1:na` becomes inner sequential loop
+  - Original structure was:
+  ```julia
+  Threads.@threads for iz in 1:nz
+      @inbounds begin
+          z = g.zgrid[iz]
+          for ia in 1:na
+              # ... code ...
+          end
+      end
+  end
+  ```
+
+#### `aggregates.jl`
+
+**Revert:**
+- Remove: `using Base.Threads` (line 5)
+- Remove all thread-local accumulator arrays and parallelization
+- Revert to sequential loop:
+  ```julia
+  # REVERT TO:
+  @inbounds for h in 1:H
+      working = (h < p.RetAge)
+      for ia in 1:na
+          a = g.agrid[ia]
+          for iz in 1:nz
+              for ep in 1:ne
+                  # ... original sequential code ...
+              end
+          end
+      end
+  end
+  ```
+
+#### `reporting.jl`
+
+**Revert:**
+- Remove: `using Base.Threads` (line 10)
+- In `aggregate_consumption` function (around line 57):
+  - Revert to sequential version:
+  ```julia
+  # REVERT TO:
+  function aggregate_consumption(DBN::Array{Float64,4}, pol::Household.Policies)
+      H, na, nz, ne = size(DBN)
+      C = 0.0
+      @inbounds for h in 1:H, ia in 1:na, iz in 1:nz, ep in 1:ne
+          m = DBN[h, ia, iz, ep]
+          m == 0.0 && continue
+          C += pol.c[h, ia, iz, ep] * m
+      end
+      return C
+  end
+  ```
+
+### Quick Summary
+
+**To add progress bars only:**
+1. Keep `progress.jl` and the `include("progress.jl")` in `main.jl`
+2. Keep all `Progress.ProgressBar`, `Progress.update!`, and `Progress.finish!` calls
+3. Revert all `Threads.@threads` changes back to original parallelization strategy (over `iz` instead of `ia` or `h`)
+4. Remove `using Base.Threads` from files that don't need it
+5. Revert thread-local accumulator patterns back to simple sequential loops
+
+The progress bars will work identically whether or not you keep the parallelization improvements.
+
+---
+
 ## References
 
 - Guvenen, F., G. Kambourov, B. Kuruscu, S. Ocampo, and D. Chen (2023). Use it or lose it: Efficiency and redistributional effects of wealth taxation. The Quarterly Journal of

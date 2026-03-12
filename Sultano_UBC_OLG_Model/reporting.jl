@@ -7,6 +7,7 @@ export macro_stats, print_macro_summary,
        welfare_CE_by_age, welfare_CE_by_skillbins,
        welfare_CE_by_wealthbins, welfare_CE_by_occupation
 
+using Base.Threads
 using Printf
 
 import ..Household
@@ -56,13 +57,18 @@ and consumption policy `pol.c`.
 """
 function aggregate_consumption(DBN::Array{Float64,4}, pol::Household.Policies)
     H, na, nz, ne = size(DBN)
-    C = 0.0
-    @inbounds for h in 1:H, ia in 1:na, iz in 1:nz, ep in 1:ne
-        m = DBN[h, ia, iz, ep]
-        m == 0.0 && continue
-        C += pol.c[h, ia, iz, ep] * m
+    # Parallelize over age h (81 ages) for better thread utilization
+    nt = Threads.nthreads()
+    local_C = zeros(Float64, nt)
+    @inbounds Threads.@threads for h in 1:H
+        tid = Threads.threadid()
+        for ia in 1:na, iz in 1:nz, ep in 1:ne
+            m = DBN[h, ia, iz, ep]
+            m == 0.0 && continue
+            local_C[tid] += pol.c[h, ia, iz, ep] * m
+        end
     end
-    return C
+    return sum(local_C)
 end
 
 """

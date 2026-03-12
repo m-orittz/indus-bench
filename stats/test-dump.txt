@@ -1,0 +1,22 @@
+Testing Pick-Cube finetuned, zero-shot to Pick-Gear:
+    Calvert0921/smolvla_franka_liftyellowcube5_1000
+        Pick-Cube-Yellow-12envs:
+            Overall Results across 12 runs (12 episodes):
+            elapsed_steps: 200.0
+            success: 0.3333333333333333
+            is_obj_placed: 0.3333333333333333
+            is_robot_static: 1.0
+            is_grasped: 0.5
+
+            elapsed_steps: 200.0
+            success: 0.75
+            is_obj_placed: 0.75
+            is_robot_static: 1.0
+            is_grasped: 0.8333333333333334
+
+        Pick-Gear-12envs:
+            elapsed_steps: 200.0
+            success: 0.0
+            is_obj_placed: 0.0
+            is_robot_static: 1.0
+            is_grasped: 0.0

@@ -4,6 +4,7 @@ export CalibrationTargets, CalibrationOptions, CalibrationResult,
        compute_moments, calibrate,
        save_calibration, load_calibration
 
+using Base.Threads
 using LinearAlgebra
 using Printf
 using Serialization
@@ -13,6 +14,7 @@ import ..Grids
 import ..Equilibrium
 import ..Reporting
 import ..Inheritance
+import ..Progress
 
 # ============================================================
 # Public structs
@@ -273,16 +275,28 @@ function calibrate(p_base::Parameters.ModelParameters;
     end
 
     # Evaluate the 3 columns — in parallel or sequentially.
+    pb_jac = opts.verbose ? Progress.ProgressBar("Jacobian estimation", 3; show_eta=false) : nothing
     J_cols = if use_parallel
         tasks = Vector{Task}(undef, 3)
         for j in 1:3
             xpj = xps[j]            # capture per-iteration value, not loop variable
             tasks[j] = Threads.@spawn eval_x(xpj, res)
         end
-        [fetch(tasks[j]) for j in 1:3]
+        results = Vector{Any}(undef, 3)
+        for j in 1:3
+            results[j] = fetch(tasks[j])
+            opts.verbose && Progress.update!(pb_jac, j)
+        end
+        results
     else
-        [eval_x(xps[j], res) for j in 1:3]
+        results = Vector{Any}(undef, 3)
+        for j in 1:3
+            results[j] = eval_x(xps[j], res)
+            opts.verbose && Progress.update!(pb_jac, j)
+        end
+        results
     end
+    opts.verbose && Progress.finish!(pb_jac)
 
     J = zeros(3, 3)
     for j in 1:3
@@ -297,7 +311,10 @@ function calibrate(p_base::Parameters.ModelParameters;
     # ------------------------------------------------------------------
     B = copy(J)   # Broyden approximate Jacobian  (∂r/∂x)
 
+    pb_cal = opts.verbose ? Progress.ProgressBar("Calibration", opts.max_iter; show_eta=true) : nothing
+
     for it in 1:opts.max_iter
+        opts.verbose && Progress.update!(pb_cal, it)
 
         # --- Newton-like step: B * Δx = -r ---
         Δx = try
@@ -353,11 +370,13 @@ function calibrate(p_base::Parameters.ModelParameters;
         end
 
         if maximum(abs, r) < opts.tol
+            opts.verbose && Progress.finish!(pb_cal, "converged")
             return CalibrationResult(x[1], x[2], x[3], mom_new, r, true, it, res)
         end
     end
 
     # Max iterations reached — return best available result
+    opts.verbose && Progress.finish!(pb_cal, "max iterations")
     mom_final = compute_moments(res)
     r_final   = _residuals(mom_final, targets)
     if opts.verbose
@@ -385,21 +404,26 @@ function _ent_wealth_share_pop(res::Equilibrium.EqmResults)
 
     H, na, nz, ne = size(DBN)
 
-    totW = 0.0
-    entW = 0.0
+    # Parallelize over age h (81 ages) for better thread utilization
+    nt = Threads.nthreads()
+    local_totW = zeros(Float64, nt)
+    local_entW = zeros(Float64, nt)
 
-    @inbounds for h in 1:H
+    @inbounds Threads.@threads for h in 1:H
+        tid = Threads.threadid()
         for ia in 1:na, iz in 1:nz, ep in 1:ne
             m = DBN[h, ia, iz, ep]
             m == 0.0 && continue
             a = g.agrid[ia]
-            totW += a * m
+            local_totW[tid] += a * m
             if pol.e[h, ia, iz, ep] == 1
-                entW += a * m
+                local_entW[tid] += a * m
             end
         end
     end
 
+    totW = sum(local_totW)
+    entW = sum(local_entW)
     return totW > 0.0 ? entW / totW : NaN
 end
 

@@ -19,6 +19,7 @@ module OLGModel
     include("utility.jl")        # Utility       ← Parameters
     include("production.jl")     # Production    ← Parameters, Prices, Utility
     include("inheritance.jl")    # Inheritance   ← Parameters, Grids
+    include("progress.jl")      # Progress      ← standalone utility
     include("household.jl")      # Household     ← Parameters, Grids, Prices,
                                  #                  Utility, Production, Inheritance
     include("aggregates.jl")     # Aggregates    ← Parameters, Grids, Prices,

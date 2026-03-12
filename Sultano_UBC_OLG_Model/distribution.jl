@@ -8,6 +8,7 @@ import ..Parameters
 import ..Grids
 import ..Household
 import ..Inheritance
+import ..Progress
 
 """
     _max_abs_diff(A, B)
@@ -94,21 +95,25 @@ function stationary_distribution(p::Parameters.ModelParameters,
     DBN_locals = [zeros(Float64, H, na, nz, 2) for _ in 1:nt]
     DBN_new    = zeros(Float64, H, na, nz, 2)
 
-    for _ in 1:max_iter
+    pb_dbn = Progress.ProgressBar("Stationary distribution", max_iter; show_eta=true)
+
+    for iter in 1:max_iter
+        Progress.update!(pb_dbn, iter)
         # === reset locals ===
         for t in 1:nt
             fill!(DBN_locals[t], 0.0)
         end
 
-        # === Thread over parent iz: safe via thread-local arrays ===
-        Threads.@threads for iz in 1:nz
+        # === Thread over parent ia: safe via thread-local arrays ===
+        # Parallelize over asset grid (na=100) instead of ability grid (nz=9) for better thread utilization
+        Threads.@threads for ia in 1:na
             tid = Threads.threadid()
             DBNt = DBN_locals[tid]
 
             @inbounds for h in 1:H
                 s_hp1 = (h < H) ? p.survP[h] : 0.0
 
-                for ia in 1:na
+                for iz in 1:nz
                     for ep in 1:2
                         mass = DBN[h, ia, iz, ep]
                         mass == 0.0 && continue
@@ -156,6 +161,7 @@ function stationary_distribution(p::Parameters.ModelParameters,
 
         diff = _max_abs_diff(DBN_new, DBN)
         if diff < tol
+            Progress.finish!(pb_dbn, "converged")
             return DBN_new
         end
 
@@ -163,6 +169,7 @@ function stationary_distribution(p::Parameters.ModelParameters,
         DBN, DBN_new = DBN_new, DBN
     end
 
+    Progress.finish!(pb_dbn, "max iterations")
     return DBN
 end
 
